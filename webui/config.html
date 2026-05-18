@@ -1,0 +1,370 @@
+<html>
+<head>
+    <title>A0 Swarm</title>
+</head>
+<body>
+    <div x-data>
+        <template x-if="config">
+            <div x-init="
+              context.dockerCandidates = [];
+              context.dockerDiscoveryError = '';
+              context.dockerSetup = null;
+              context.remoteTestResult = null;
+              context.a2aDiscovery = { label: '', base_url: '', auth_token: '' };
+              context.a2aDiscoveryResult = null;
+              context.notifySwarm = (level, message) => {
+                try {
+                  const store = $store.notificationStore;
+                  const fn = store && store[level];
+                  if (typeof fn === 'function') fn.call(store, message, 'A0 Swarm');
+                } catch (_) {}
+              };
+              context.copyDockerSetup = async (text, label = 'setup command') => {
+                if (!text) return;
+                try {
+                  await navigator.clipboard.writeText(text);
+                  context.notifySwarm('frontendSuccess', label + ' copied.');
+                } catch (e) {
+                  context.notifySwarm('frontendError', 'Could not copy to clipboard. Select the text manually.');
+                }
+              };
+              context.discoverDocker = async () => {
+                context.dockerDiscoveryError = '';
+                context.dockerSetup = null;
+                const resp = await globalThis.fetchApi('/plugins/a0_swarm/swarm_discover_docker', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({})
+                });
+                const r = await resp.json();
+                context.dockerCandidates = r.candidates || [];
+                context.dockerDiscoveryError = r.ok ? '' : (r.error || 'Docker discovery failed');
+                context.dockerSetup = r.setup || null;
+                if (r.ok) {
+                  context.notifySwarm('frontendSuccess', 'Docker discovery completed.');
+                } else {
+                  context.notifySwarm('frontendWarning', context.dockerDiscoveryError);
+                }
+              };
+              context.testRemote = async (remote) => {
+                const resp = await globalThis.fetchApi('/plugins/a0_swarm/swarm_test_remote', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(remote || {})
+                });
+                context.remoteTestResult = await resp.json();
+              };
+              context.useDockerCandidate = (candidate) => {
+                if (!candidate || !candidate.base_url) {
+                  context.notifySwarm('frontendWarning', 'No A2A URL was discovered for that container.');
+                  return;
+                }
+                context.a2aDiscovery = {
+                  label: candidate.label || candidate.container || '',
+                  base_url: candidate.base_url || '',
+                  auth_token: context.a2aDiscovery?.auth_token || ''
+                };
+                context.a2aDiscoveryResult = null;
+                context.notifySwarm('frontendSuccess', 'Docker candidate copied to A2A Discovery.');
+              };
+              context.discoverA2A = async () => {
+                const remote = context.a2aDiscovery || {};
+                if (!remote.base_url) {
+                  context.notifySwarm('frontendWarning', 'Enter an A2A URL first.');
+                  return;
+                }
+                const resp = await globalThis.fetchApi('/plugins/a0_swarm/swarm_test_remote', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(remote)
+                });
+                context.a2aDiscoveryResult = await resp.json();
+                if (context.a2aDiscoveryResult.ok) {
+                  context.notifySwarm('frontendSuccess', 'A2A Agent Card discovered.');
+                } else {
+                  context.notifySwarm('frontendWarning', context.a2aDiscoveryResult.error || 'A2A discovery failed.');
+                }
+              };
+              context.addDiscoveredA2A = () => {
+                const result = context.a2aDiscoveryResult || {};
+                if (!result.ok || !result.remote) return;
+                if (!Array.isArray(config.remotes)) config.remotes = [];
+                const label = (context.a2aDiscovery.label || result.remote.label || result.discovery?.name || result.remote.base_url || '').trim();
+                const baseUrl = (result.remote.base_url || context.a2aDiscovery.base_url || '').trim();
+                const token = (context.a2aDiscovery.auth_token || '').trim();
+                const existing = config.remotes.find(r => r && (r.label === label || r.base_url === baseUrl));
+                if (existing) {
+                  existing.label = label;
+                  existing.base_url = baseUrl;
+                  existing.auth_token = token;
+                } else {
+                  config.remotes.push({ label, base_url: baseUrl, auth_token: token });
+                }
+                context.notifySwarm('frontendSuccess', 'A2A remote added. Save plugin settings to keep it.');
+              };
+            ">
+                <div class="section-title">A0 Swarm</div>
+                <div class="section-description">
+                    Settings for the parallel subagent swarm.
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Max parallel agents</div>
+                        <div class="field-description">
+                            Hard cap on subagents spawned by a single delegate_parallel call.
+                            0 means no cap (warning logged above 16).
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <input type="number" min="0" max="64"
+                            x-model.number="config.max_parallel"
+                            x-init="if (config.max_parallel === undefined || config.max_parallel === null) config.max_parallel = 0" />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Default subagent profile</div>
+                        <div class="field-description">
+                            Agent profile name used for spawned subagents when the
+                            delegate_parallel call does not specify one. Leave blank
+                            to inherit the parent profile.
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <input type="text"
+                            x-model="config.default_profile"
+                            x-init="if (config.default_profile === undefined || config.default_profile === null) config.default_profile = ''"
+                            placeholder="(inherit parent)" />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Result size cap (KB)</div>
+                        <div class="field-description">
+                            Maximum kilobytes of result text stored per subagent in the
+                            registry / panel. Larger results are truncated with a marker.
+                            The tool summary returned to the orchestrator is not capped.
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <input type="number" min="1" max="1024"
+                            x-model.number="config.result_kb_cap"
+                            x-init="if (config.result_kb_cap === undefined || config.result_kb_cap === null) config.result_kb_cap = 64" />
+                    </div>
+                </div>
+
+                <div class="section-title" style="margin-top:1.25rem;">Remote Agent Zero instances</div>
+                <div class="section-description">
+                    Other Agent Zero containers reachable over the network. Each entry can be
+                    used as <code>endpoint</code> on a <code>delegate_parallel</code> task
+                    (by <code>label</code> or by full URL) to route that task to the remote
+                    container via FastA2A. The auth token, if set, is sent as
+                    <code>Authorization: Bearer &lt;token&gt;</code> on every A2A call.
+                </div>
+
+                <template x-if="!Array.isArray(config.remotes)">
+                    <div x-init="config.remotes = []"></div>
+                </template>
+
+                <template x-for="(remote, idx) in config.remotes" :key="idx">
+                    <div class="field" style="display:flex; flex-direction:column; gap:0.4rem; border:1px solid var(--color-border); border-radius:0.4rem; padding:0.6rem 0.75rem; margin-bottom:0.5rem;">
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <input type="text" x-model="remote.label" placeholder="label (e.g. research-rig)"
+                                   style="flex:1;" />
+                            <button type="button"
+                                    @click="config.remotes.splice(idx, 1)"
+                                    title="Remove this remote"
+                                    style="background:transparent; border:1px solid var(--color-border); color:var(--color-error-text); padding:0.2rem 0.6rem; border-radius:0.3rem; cursor:pointer;">
+                                Remove
+                            </button>
+                        </div>
+                        <input type="text" x-model="remote.base_url"
+                               placeholder="base_url (e.g. http://a0-research:55000)" />
+                        <input type="password" x-model="remote.auth_token"
+                               placeholder="auth_token (optional)"
+                               autocomplete="new-password" />
+                    </div>
+                </template>
+
+                <div style="margin-top:0.5rem;">
+                    <button type="button"
+                            @click="config.remotes.push({ label: '', base_url: '', auth_token: '' })"
+                            style="background:var(--color-highlight); color:#fff; border:none; padding:0.35rem 0.85rem; border-radius:0.3rem; cursor:pointer; font-weight:600;">
+                        Add remote
+                    </button>
+                </div>
+
+                <div class="section-title" style="margin-top:1.25rem;">Remote diagnostics</div>
+                <div class="section-description">
+                    Discover A2A Agent Cards, test configured remotes, and optionally discover same-host Docker Agent Zero containers.
+                </div>
+
+                <div class="field" style="display:flex; flex-direction:column; gap:0.5rem; border:1px solid var(--color-border); border-radius:0.5rem; padding:0.75rem; margin-bottom:0.85rem;">
+                    <div>
+                        <div class="field-title">A2A Discovery</div>
+                        <div class="field-description">
+                            Use the A2A Agent Card to verify a known remote URL and read its advertised skills and communication modes. Docker access is not required.
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <input type="text" x-model="context.a2aDiscovery.label"
+                               placeholder="label (e.g. research-rig)" style="flex:0.8;" />
+                        <input type="text" x-model="context.a2aDiscovery.base_url"
+                               placeholder="A2A URL (e.g. http://host:50080/a2a/t-token)" style="flex:1.4;" />
+                    </div>
+                    <input type="password" x-model="context.a2aDiscovery.auth_token"
+                           placeholder="auth token (optional)" autocomplete="new-password" />
+                    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                        <button type="button"
+                                @click="context.discoverA2A && context.discoverA2A()"
+                                style="background:var(--color-highlight); color:#fff; border:none; padding:0.35rem 0.85rem; border-radius:0.3rem; cursor:pointer; font-weight:600;">
+                            Discover A2A
+                        </button>
+                        <button type="button"
+                                x-show="context.a2aDiscoveryResult && context.a2aDiscoveryResult.ok"
+                                @click="context.addDiscoveredA2A && context.addDiscoveredA2A()"
+                                style="background:transparent; border:1px solid var(--color-border); color:var(--color-text); padding:0.35rem 0.85rem; border-radius:0.3rem; cursor:pointer;">
+                            Add as remote
+                        </button>
+                    </div>
+                    <template x-if="context.a2aDiscoveryResult">
+                        <div style="border:1px solid var(--color-border); border-radius:0.4rem; padding:0.55rem 0.65rem;">
+                            <div class="field-title">Agent Card</div>
+                            <div class="field-description" x-text="context.a2aDiscoveryResult.ok ? 'Reachable over A2A' : (context.a2aDiscoveryResult.error || 'A2A discovery failed')"></div>
+                            <div class="field-description"
+                                 x-show="context.a2aDiscoveryResult.remote && context.a2aDiscoveryResult.remote.input_base_url"
+                                 x-text="'Tested URL: ' + context.a2aDiscoveryResult.remote.base_url"></div>
+                            <template x-if="context.a2aDiscoveryResult.discovery">
+                                <div style="margin-top:0.45rem;">
+                                    <div style="font-weight:700;" x-text="context.a2aDiscoveryResult.discovery.name"></div>
+                                    <div class="field-description" x-text="context.a2aDiscoveryResult.discovery.description"></div>
+                                    <div class="field-description" x-show="context.a2aDiscoveryResult.discovery.skills && context.a2aDiscoveryResult.discovery.skills.length"
+                                         x-text="'Skills: ' + context.a2aDiscoveryResult.discovery.skills.map(s => s.name || s.id).join(', ')"></div>
+                                    <div class="field-description"
+                                         x-text="'Communication: task submission, context continuation, and cancel are available through A2A.'"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Discover local Docker A0 containers</div>
+                        <div class="field-description">
+                            Lists likely same-host Agent Zero containers. Discovery only reads Docker metadata.
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <button type="button"
+                                @click="context.discoverDocker && context.discoverDocker()"
+                                style="background:var(--color-highlight); color:#fff; border:none; padding:0.35rem 0.85rem; border-radius:0.3rem; cursor:pointer; font-weight:600;">
+                            Discover
+                        </button>
+                    </div>
+                </div>
+
+                <template x-if="context.dockerDiscoveryError">
+                    <div class="field-description" x-text="context.dockerDiscoveryError"></div>
+                </template>
+
+                <template x-if="context.dockerSetup">
+                    <div style="border:1px solid var(--color-border); border-radius:0.5rem; padding:0.75rem; margin:0.5rem 0 0.85rem; display:flex; flex-direction:column; gap:0.65rem;">
+                        <div>
+                            <div class="field-title" x-text="context.dockerSetup.title || 'Docker Access Setup'"></div>
+                            <div class="field-description" x-text="context.dockerSetup.summary"></div>
+                        </div>
+
+                        <div>
+                            <div class="field-title" style="font-size:0.82rem;">macOS Docker Desktop</div>
+                            <ol style="margin:0.35rem 0 0; padding-left:1.25rem;">
+                                <template x-for="step in (context.dockerSetup.mac_steps || [])" :key="step">
+                                    <li class="field-description" x-text="step"></li>
+                                </template>
+                            </ol>
+                        </div>
+
+                        <div>
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
+                                <div class="field-title" style="font-size:0.82rem;">Docker Compose</div>
+                                <button type="button"
+                                        @click="context.copyDockerSetup(context.dockerSetup.compose_snippet, 'Docker Compose snippet')"
+                                        style="background:transparent; border:1px solid var(--color-border); color:var(--color-text); padding:0.2rem 0.6rem; border-radius:0.3rem; cursor:pointer;">
+                                    Copy
+                                </button>
+                            </div>
+                            <pre style="white-space:pre-wrap; overflow:auto; border:1px solid var(--color-border); border-radius:0.4rem; padding:0.5rem; margin:0.35rem 0 0;" x-text="context.dockerSetup.compose_snippet"></pre>
+                        </div>
+
+                        <div>
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
+                                <div class="field-title" style="font-size:0.82rem;">docker run flag</div>
+                                <button type="button"
+                                        @click="context.copyDockerSetup(context.dockerSetup.docker_run_flag, 'docker run flag')"
+                                        style="background:transparent; border:1px solid var(--color-border); color:var(--color-text); padding:0.2rem 0.6rem; border-radius:0.3rem; cursor:pointer;">
+                                    Copy
+                                </button>
+                            </div>
+                            <pre style="white-space:pre-wrap; overflow:auto; border:1px solid var(--color-border); border-radius:0.4rem; padding:0.5rem; margin:0.35rem 0 0;" x-text="context.dockerSetup.docker_run_flag"></pre>
+                        </div>
+
+                        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                            <button type="button"
+                                    @click="context.copyDockerSetup(context.dockerSetup.compose_restart, 'restart command')"
+                                    style="background:transparent; border:1px solid var(--color-border); color:var(--color-text); padding:0.25rem 0.7rem; border-radius:0.3rem; cursor:pointer;">
+                                Copy restart command
+                            </button>
+                            <button type="button"
+                                    @click="context.discoverDocker && context.discoverDocker()"
+                                    style="background:var(--color-highlight); color:#fff; border:none; padding:0.25rem 0.7rem; border-radius:0.3rem; cursor:pointer; font-weight:600;">
+                                Recheck Docker access
+                            </button>
+                        </div>
+
+                        <div class="field-description" x-text="context.dockerSetup.manual_fallback"></div>
+                    </div>
+                </template>
+
+                <template x-if="Array.isArray(context.dockerCandidates) && context.dockerCandidates.length">
+                    <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.75rem;">
+                        <template x-for="candidate in context.dockerCandidates" :key="candidate.container || candidate.label">
+                            <div style="border:1px solid var(--color-border); border-radius:0.4rem; padding:0.5rem 0.65rem;">
+                                <div style="font-weight:700;" x-text="candidate.label"></div>
+                                <div class="field-description" x-text="candidate.image"></div>
+                                <div class="field-description" x-text="candidate.ports"></div>
+                                <div class="field-description" x-show="candidate.base_url" x-text="candidate.base_url"></div>
+                                <div style="margin-top:0.4rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+                                    <button type="button"
+                                            x-show="candidate.base_url"
+                                            @click="context.useDockerCandidate && context.useDockerCandidate(candidate)"
+                                            style="background:transparent; border:1px solid var(--color-border); color:var(--color-text); padding:0.2rem 0.6rem; border-radius:0.3rem; cursor:pointer;">
+                                        Use in A2A Discovery
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-for="(remote, idx) in config.remotes" :key="'test-' + idx">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin:0.35rem 0;">
+                        <span x-text="remote.label || remote.base_url || 'Unnamed remote'"></span>
+                        <button type="button"
+                                @click="context.testRemote && context.testRemote(remote)"
+                                style="background:transparent; border:1px solid var(--color-border); color:var(--color-text); padding:0.2rem 0.6rem; border-radius:0.3rem; cursor:pointer;">
+                            Test
+                        </button>
+                    </div>
+                </template>
+
+                <template x-if="context.remoteTestResult">
+                    <pre style="white-space:pre-wrap; overflow:auto; border:1px solid var(--color-border); border-radius:0.4rem; padding:0.5rem;" x-text="JSON.stringify(context.remoteTestResult, null, 2)"></pre>
+                </template>
+            </div>
+        </template>
+    </div>
+</body>
+</html>

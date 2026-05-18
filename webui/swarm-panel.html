@@ -1,0 +1,1324 @@
+<script type="module" src="/plugins/a0_swarm/webui/swarm-store.js"></script>
+
+<style>
+    /* ===========================================================
+       Agent Zero - Swarm panel (right-canvas surface)
+       Mirrors the framework chrome conventions used by the
+       browser plugin so the panel feels native to A0.
+       =========================================================== */
+
+    [x-cloak] { display: none !important; }
+
+    /* The framework forces the outer x-data div to be a row flex
+       container at 100% size (see right-canvas.css). We re-stamp
+       direction + sizing so our column layout resolves cleanly. */
+    .a0swarm-panel {
+        --a0swarm-chrome-surface: color-mix(in srgb, var(--color-background) 92%, #000 8%);
+        --a0swarm-chrome-border: color-mix(in srgb, var(--color-border) 58%, transparent);
+        --a0swarm-card-radius: 0.45rem;
+        --a0swarm-control-radius: 0.4rem;
+
+        box-sizing: border-box;
+        display: flex !important;
+        flex-direction: column;
+        flex: 1 1 auto;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        background: transparent;
+        color: var(--color-text);
+        font-size: 0.85rem;
+        line-height: 1.4;
+        overflow: hidden;
+    }
+
+    .a0swarm-panel *,
+    .a0swarm-panel *::before,
+    .a0swarm-panel *::after {
+        box-sizing: border-box;
+    }
+
+    .a0swarm-header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.65rem 0.9rem;
+        border-bottom: 1px solid var(--a0swarm-chrome-border);
+        background: var(--a0swarm-chrome-surface);
+    }
+
+    .a0swarm-header__title {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: var(--color-text);
+    }
+
+    .a0swarm-header__title .material-symbols-outlined {
+        font-size: 1.1rem;
+        color: color-mix(in srgb, var(--color-text) 70%, var(--color-highlight) 30%);
+    }
+
+    .a0swarm-header__meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.72rem;
+        color: var(--color-text-muted);
+    }
+
+    .a0swarm-header__count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1.35rem;
+        height: 1.35rem;
+        padding: 0 0.4rem;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--color-highlight) 18%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-highlight) 45%, transparent);
+        color: var(--color-text);
+        font-size: 0.7rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .a0swarm-header__count.is-zero {
+        background: transparent;
+        border-color: var(--a0swarm-chrome-border);
+        color: var(--color-text-muted);
+    }
+
+    .a0swarm-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 0.85rem 0.9rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in srgb, var(--color-border) 78%, transparent) transparent;
+    }
+
+    .a0swarm-body::-webkit-scrollbar {
+        width: 8px;
+    }
+    .a0swarm-body::-webkit-scrollbar-track { background: transparent; }
+    .a0swarm-body::-webkit-scrollbar-thumb {
+        background: color-mix(in srgb, var(--color-border) 78%, transparent);
+        border-radius: 999px;
+    }
+
+    /* ---------- Empty state ---------- */
+    .a0swarm-empty {
+        flex: 1 1 auto;
+        min-height: 18rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: 0.85rem;
+        padding: 2rem 1.25rem;
+        color: var(--color-text-muted);
+    }
+
+    .a0swarm-empty__icon-wrap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 4.25rem;
+        height: 4.25rem;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--color-highlight) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-highlight) 28%, var(--a0swarm-chrome-border));
+        margin-bottom: 0.15rem;
+    }
+
+    .a0swarm-empty__icon-wrap .material-symbols-outlined {
+        font-size: 2.4rem !important;
+        color: color-mix(in srgb, var(--color-text) 60%, var(--color-highlight) 40%);
+    }
+
+    .a0swarm-empty__title {
+        font-size: 1.02rem;
+        font-weight: 700;
+        color: var(--color-text);
+        letter-spacing: 0.005em;
+    }
+
+    .a0swarm-empty__desc {
+        font-size: 0.82rem;
+        line-height: 1.55;
+        color: var(--color-text-muted);
+        max-width: 28rem;
+    }
+
+    .a0swarm-empty__hint {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.4rem;
+        padding: 0.35rem 0.65rem;
+        border-radius: 999px;
+        border: 1px solid var(--a0swarm-chrome-border);
+        background: var(--a0swarm-chrome-surface);
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 0.7rem;
+        color: var(--color-text-muted);
+    }
+
+    .a0swarm-empty__hint .material-symbols-outlined {
+        font-size: 0.95rem;
+        color: color-mix(in srgb, var(--color-text-muted) 70%, var(--color-highlight) 30%);
+    }
+
+    /* ---------- Sections ---------- */
+    .a0swarm-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .a0swarm-section__label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0 0.1rem 0.1rem;
+        font-size: 0.66rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--color-text-muted);
+    }
+
+    .a0swarm-section__label-text {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+    }
+
+    .a0swarm-section__label-rule {
+        flex: 1 1 auto;
+        height: 1px;
+        background: var(--a0swarm-chrome-border);
+        margin-left: 0.4rem;
+    }
+
+    .a0swarm-section--completed { opacity: 0.78; }
+
+    /* ---------- Cards ---------- */
+    .a0swarm-card {
+        position: relative;
+        background: var(--color-message-bg);
+        border: 1px solid var(--a0swarm-chrome-border);
+        border-left-width: 3px;
+        border-radius: var(--a0swarm-card-radius);
+        padding: 0.7rem 0.8rem 0.65rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+        transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .a0swarm-card:hover {
+        border-color: color-mix(in srgb, var(--color-border) 90%, transparent);
+    }
+
+    .a0swarm-card.status-working   { border-left-color: var(--color-highlight); }
+    .a0swarm-card.status-blocked   { border-left-color: var(--color-warning-text); }
+    .a0swarm-card.status-done      { border-left-color: #22c55e; }
+    .a0swarm-card.status-failed    { border-left-color: var(--color-error-text); }
+    .a0swarm-card.status-pending   { border-left-color: var(--color-text-muted); }
+    .a0swarm-card.status-cancelled { border-left-color: var(--color-secondary); }
+
+    .a0swarm-card__header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
+    .a0swarm-card__status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 0.18rem 0.5rem;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--color-background) 70%, transparent);
+        border: 1px solid var(--a0swarm-chrome-border);
+        color: var(--color-text-muted);
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .a0swarm-card__status::before {
+        content: "";
+        display: inline-block;
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .a0swarm-card.status-working   .a0swarm-card__status {
+        color: var(--color-highlight);
+        border-color: color-mix(in srgb, var(--color-highlight) 48%, var(--a0swarm-chrome-border));
+        background: color-mix(in srgb, var(--color-highlight) 14%, transparent);
+    }
+    .a0swarm-card.status-blocked   .a0swarm-card__status {
+        color: var(--color-warning-text);
+        border-color: color-mix(in srgb, var(--color-warning-text) 48%, var(--a0swarm-chrome-border));
+        background: color-mix(in srgb, var(--color-warning-text) 14%, transparent);
+    }
+    .a0swarm-card.status-done      .a0swarm-card__status {
+        color: #22c55e;
+        border-color: color-mix(in srgb, #22c55e 48%, var(--a0swarm-chrome-border));
+        background: color-mix(in srgb, #22c55e 14%, transparent);
+    }
+    .a0swarm-card.status-failed    .a0swarm-card__status {
+        color: var(--color-error-text);
+        border-color: color-mix(in srgb, var(--color-error-text) 48%, var(--a0swarm-chrome-border));
+        background: color-mix(in srgb, var(--color-error-text) 14%, transparent);
+    }
+    .a0swarm-card.status-pending   .a0swarm-card__status { color: var(--color-text-muted); }
+    .a0swarm-card.status-cancelled .a0swarm-card__status { color: var(--color-secondary); }
+
+    .a0swarm-card__label {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 0.88rem;
+        font-weight: 650;
+        color: var(--color-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .a0swarm-card__name {
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 0.68rem;
+        color: var(--color-text-muted);
+        padding: 0.1rem 0.4rem;
+        border-radius: 0.25rem;
+        background: color-mix(in srgb, var(--color-background) 65%, transparent);
+        border: 1px solid var(--a0swarm-chrome-border);
+        max-width: 14rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .a0swarm-card__unread {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1.2rem;
+        height: 1.2rem;
+        padding: 0 0.4rem;
+        border-radius: 999px;
+        background: var(--color-error-text);
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .a0swarm-card__task {
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: color-mix(in srgb, var(--color-text) 82%, transparent);
+        border-left: 2px solid var(--a0swarm-chrome-border);
+        padding: 0.05rem 0 0.05rem 0.55rem;
+    }
+
+    .a0swarm-card__activity {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.76rem;
+        font-style: italic;
+        color: var(--color-highlight);
+    }
+
+    .a0swarm-card__activity::before {
+        content: "";
+        display: inline-block;
+        width: 0.4rem;
+        height: 0.4rem;
+        border-radius: 50%;
+        background: var(--color-highlight);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-highlight) 22%, transparent);
+        animation: a0swarm-pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes a0swarm-pulse {
+        0%, 100% { opacity: 1;   transform: scale(1); }
+        50%      { opacity: 0.55; transform: scale(0.85); }
+    }
+
+    .a0swarm-card__metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.35rem;
+    }
+
+    .a0swarm-metric {
+        min-width: 0;
+        padding: 0.35rem 0.45rem;
+        border: 1px solid var(--a0swarm-chrome-border);
+        border-radius: 0.35rem;
+        background: color-mix(in srgb, var(--color-background) 42%, transparent);
+    }
+
+    .a0swarm-metric__label {
+        display: block;
+        color: var(--color-text-muted);
+        font-size: 0.56rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .a0swarm-metric__value {
+        display: block;
+        margin-top: 0.18rem;
+        color: var(--color-text);
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 0.72rem;
+        line-height: 1.15;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .a0swarm-live {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        padding: 0.5rem 0.6rem;
+        border: 1px solid color-mix(in srgb, var(--color-highlight) 34%, var(--a0swarm-chrome-border));
+        border-radius: 0.4rem;
+        background: color-mix(in srgb, var(--color-highlight) 7%, transparent);
+    }
+
+    .a0swarm-live__title {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        color: var(--color-text-muted);
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .a0swarm-live__title .material-symbols-outlined {
+        font-size: 0.95rem;
+        color: var(--color-highlight);
+    }
+
+    .a0swarm-live__body {
+        max-height: 8rem;
+        overflow-y: auto;
+        color: var(--color-text);
+        font-size: 0.74rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+        scrollbar-width: thin;
+    }
+
+    .a0swarm-card__blocker {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.4rem;
+        background: color-mix(in srgb, var(--color-warning-text) 14%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-warning-text) 45%, transparent);
+        border-radius: 0.35rem;
+        padding: 0.4rem 0.55rem;
+        color: var(--color-warning-text);
+        font-size: 0.76rem;
+        line-height: 1.4;
+    }
+
+    .a0swarm-card__blocker .material-symbols-outlined {
+        font-size: 1.05rem;
+        flex: 0 0 auto;
+        margin-top: 0.05rem;
+    }
+
+    .a0swarm-card__blocker-label {
+        font-weight: 700;
+        margin-right: 0.3rem;
+    }
+
+    .a0swarm-card__messages {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        max-height: 9rem;
+        overflow-y: auto;
+        padding: 0.45rem 0.1rem 0.05rem;
+        border-top: 1px dashed var(--a0swarm-chrome-border);
+        scrollbar-width: thin;
+    }
+
+    .a0swarm-msg {
+        max-width: 92%;
+        padding: 0.35rem 0.55rem;
+        border-radius: 0.45rem;
+        font-size: 0.75rem;
+        line-height: 1.4;
+        word-wrap: break-word;
+    }
+
+    .a0swarm-msg--in {
+        align-self: flex-start;
+        background: color-mix(in srgb, var(--color-highlight) 18%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-highlight) 32%, transparent);
+        color: var(--color-text);
+        border-bottom-left-radius: 0.15rem;
+    }
+
+    .a0swarm-msg--out {
+        align-self: flex-end;
+        background: color-mix(in srgb, #22c55e 16%, transparent);
+        border: 1px solid color-mix(in srgb, #22c55e 32%, transparent);
+        color: var(--color-text);
+        border-bottom-right-radius: 0.15rem;
+    }
+
+    .a0swarm-msg__sender {
+        display: block;
+        font-size: 0.6rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--color-text-muted);
+        margin-bottom: 0.15rem;
+    }
+
+    .a0swarm-msg__topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.45rem;
+        margin-bottom: 0.15rem;
+    }
+
+    .a0swarm-msg__topline .a0swarm-msg__sender {
+        margin-bottom: 0;
+    }
+
+    .a0swarm-msg__delivery {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        min-height: 1rem;
+        padding: 0 0.35rem;
+        border-radius: 999px;
+        border: 1px solid var(--a0swarm-chrome-border);
+        background: color-mix(in srgb, var(--color-background) 64%, transparent);
+        color: var(--color-text-muted);
+        font-size: 0.55rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        line-height: 1;
+    }
+
+    .a0swarm-msg__delivery.delivery-delivered {
+        border-color: color-mix(in srgb, #22c55e 36%, transparent);
+        color: #22c55e;
+    }
+
+    .a0swarm-msg__delivery.delivery-failed {
+        border-color: color-mix(in srgb, var(--color-error-text) 45%, transparent);
+        color: var(--color-error-text);
+    }
+
+    .a0swarm-msg__failure {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.45rem;
+        margin-top: 0.35rem;
+        padding-top: 0.35rem;
+        border-top: 1px dashed color-mix(in srgb, var(--color-error-text) 35%, transparent);
+        color: var(--color-error-text);
+        font-size: 0.68rem;
+    }
+
+    .a0swarm-msg__retry {
+        flex: 0 0 auto;
+        height: 1.35rem;
+        padding: 0 0.45rem;
+        border-radius: 0.35rem;
+        border: 1px solid color-mix(in srgb, var(--color-error-text) 50%, transparent);
+        background: transparent;
+        color: var(--color-error-text);
+        font-size: 0.62rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .a0swarm-msg__retry:disabled {
+        opacity: 0.5;
+        cursor: wait;
+    }
+
+    .a0swarm-msg__content {
+        display: block;
+        white-space: pre-wrap;
+    }
+
+    .a0swarm-card__compose {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        padding-top: 0.5rem;
+        border-top: 1px dashed var(--a0swarm-chrome-border);
+    }
+
+    .a0swarm-compose__input {
+        width: 100%;
+        min-height: 2.4rem;
+        background: var(--color-input);
+        border: 1px solid var(--a0swarm-chrome-border);
+        border-radius: var(--a0swarm-control-radius);
+        color: var(--color-text);
+        font-family: inherit;
+        font-size: 0.78rem;
+        line-height: 1.4;
+        padding: 0.45rem 0.55rem;
+        resize: vertical;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+
+    .a0swarm-compose__input::placeholder {
+        color: color-mix(in srgb, var(--color-text-muted) 80%, transparent);
+    }
+
+    .a0swarm-compose__input:focus {
+        outline: none;
+        border-color: color-mix(in srgb, var(--color-highlight) 70%, var(--color-border));
+        background: var(--color-input-focus);
+    }
+
+    .a0swarm-compose__actions,
+    .a0swarm-card__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+
+    .a0swarm-card__actions {
+        padding-top: 0.45rem;
+        border-top: 1px dashed var(--a0swarm-chrome-border);
+        justify-content: flex-end;
+    }
+
+    /* ---------- Buttons ---------- */
+    .a0swarm-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-family: inherit;
+        font-size: 0.74rem;
+        font-weight: 650;
+        line-height: 1;
+        padding: 0.4rem 0.7rem;
+        border-radius: var(--a0swarm-control-radius);
+        border: 1px solid var(--a0swarm-chrome-border);
+        background: color-mix(in srgb, var(--color-background) 30%, transparent);
+        color: var(--color-text);
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+    }
+
+    .a0swarm-btn .material-symbols-outlined {
+        font-size: 1rem;
+    }
+
+    .a0swarm-btn:hover {
+        background: color-mix(in srgb, var(--color-background-hover) 70%, transparent);
+        border-color: color-mix(in srgb, var(--color-border) 90%, transparent);
+    }
+
+    .a0swarm-btn:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--color-highlight) 60%, transparent);
+        outline-offset: 1px;
+    }
+
+    .a0swarm-btn--small {
+        font-size: 0.65rem;
+        padding: 0.25rem 0.5rem;
+    }
+
+    .a0swarm-btn--primary {
+        background: var(--color-highlight);
+        border-color: var(--color-highlight);
+        color: #ffffff;
+    }
+
+    .a0swarm-btn--primary:hover {
+        background: color-mix(in srgb, var(--color-highlight) 88%, #fff 12%);
+        border-color: color-mix(in srgb, var(--color-highlight) 88%, #fff 12%);
+    }
+
+    .a0swarm-btn--warn {
+        background: var(--color-warning-text);
+        border-color: var(--color-warning-text);
+        color: #1a1a1a;
+    }
+
+    .a0swarm-btn--warn:hover {
+        background: color-mix(in srgb, var(--color-warning-text) 88%, #000 12%);
+    }
+
+    .a0swarm-btn--danger {
+        color: var(--color-error-text);
+        border-color: color-mix(in srgb, var(--color-error-text) 38%, var(--a0swarm-chrome-border));
+        background: color-mix(in srgb, var(--color-error-text) 8%, transparent);
+    }
+
+    .a0swarm-btn--danger:hover {
+        background: color-mix(in srgb, var(--color-error-text) 18%, transparent);
+        border-color: color-mix(in srgb, var(--color-error-text) 60%, var(--a0swarm-chrome-border));
+    }
+
+    .a0swarm-card__result {
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 0.72rem;
+        line-height: 1.45;
+        color: var(--color-text);
+        background: color-mix(in srgb, var(--color-background) 55%, transparent);
+        border: 1px solid var(--a0swarm-chrome-border);
+        border-radius: 0.35rem;
+        padding: 0.55rem 0.65rem;
+        max-height: 18rem;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in srgb, var(--color-border) 78%, transparent) transparent;
+    }
+
+    .a0swarm-card__result::-webkit-scrollbar { width: 6px; }
+    .a0swarm-card__result::-webkit-scrollbar-thumb {
+        background: color-mix(in srgb, var(--color-border) 78%, transparent);
+        border-radius: 999px;
+    }
+
+    /* ----- Collapsible card behavior ----- */
+    .a0swarm-card { cursor: pointer; }
+    .a0swarm-card__header { cursor: pointer; }
+    .a0swarm-card__chevron {
+        margin-left: auto;
+        color: var(--color-text-muted);
+        font-size: 1rem !important;
+        transition: transform 0.18s ease;
+    }
+    .a0swarm-card.is-expanded .a0swarm-card__chevron { transform: rotate(180deg); }
+
+    .a0swarm-card__collapsible {
+        display: none;
+        flex-direction: column;
+        gap: 0.55rem;
+    }
+    .a0swarm-card.is-expanded .a0swarm-card__collapsible { display: flex; }
+
+    /* Click on interactive children should NOT toggle the card. */
+    .a0swarm-card__collapsible button,
+    .a0swarm-card__collapsible textarea,
+    .a0swarm-card__collapsible input,
+    .a0swarm-card__messages,
+    .a0swarm-card__result,
+    .a0swarm-live { cursor: auto; }
+
+    /* ----- Remote-endpoint badge ----- */
+    .a0swarm-card__remote {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--color-highlight) 14%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-highlight) 38%, transparent);
+        color: var(--color-text);
+        font-size: 0.6rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+    }
+    .a0swarm-card__remote .material-symbols-outlined {
+        font-size: 0.8rem !important;
+        color: var(--color-highlight);
+    }
+
+    /* ----- Slot avatar: material icon + small slot-number badge ----- */
+    .a0swarm-card__avatar {
+        position: relative;
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.85rem;
+        height: 1.85rem;
+        border-radius: 0.4rem;
+        background: color-mix(in srgb, var(--color-background) 70%, transparent);
+        border: 1px solid var(--a0swarm-chrome-border);
+        color: var(--color-text);
+    }
+    .a0swarm-card__avatar-icon {
+        font-size: 1.15rem !important;
+        line-height: 1;
+        color: var(--a0swarm-avatar-accent, var(--color-text-muted));
+    }
+    .a0swarm-card__avatar-num {
+        position: absolute;
+        right: -0.25rem;
+        bottom: -0.25rem;
+        min-width: 0.95rem;
+        height: 0.95rem;
+        padding: 0 0.22rem;
+        border-radius: 999px;
+        background: var(--color-panel);
+        border: 1px solid var(--a0swarm-chrome-border);
+        color: var(--color-text);
+        font-size: 0.55rem;
+        font-weight: 700;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+
+    /* Per-slot icon accent — subtle, theme-aware. */
+    .a0swarm-card__avatar.slot-1 { --a0swarm-avatar-accent: #4a9eff; }
+    .a0swarm-card__avatar.slot-2 { --a0swarm-avatar-accent: #22c55e; }
+    .a0swarm-card__avatar.slot-3 { --a0swarm-avatar-accent: #f59e0b; }
+    .a0swarm-card__avatar.slot-4 { --a0swarm-avatar-accent: #ef4444; }
+    .a0swarm-card__avatar.slot-5 { --a0swarm-avatar-accent: #a855f7; }
+    .a0swarm-card__avatar.slot-6 { --a0swarm-avatar-accent: #ec4899; }
+    .a0swarm-card__avatar.slot-7 { --a0swarm-avatar-accent: #14b8a6; }
+    .a0swarm-card__avatar.slot-8 { --a0swarm-avatar-accent: #f97316; }
+
+    /* ----- Working progress bar (indeterminate) ----- */
+    .a0swarm-card__progress {
+        position: relative;
+        height: 3px;
+        margin-top: 0.1rem;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--color-highlight) 12%, transparent);
+        overflow: hidden;
+    }
+    .a0swarm-card__progress::after {
+        content: "";
+        position: absolute;
+        left: -40%;
+        top: 0;
+        bottom: 0;
+        width: 40%;
+        background: linear-gradient(90deg,
+            transparent,
+            var(--color-highlight),
+            transparent);
+        animation: a0swarm-progress 1.4s ease-in-out infinite;
+        border-radius: 999px;
+    }
+    @keyframes a0swarm-progress {
+        0%   { left: -45%; }
+        100% { left: 105%; }
+    }
+
+    /* ----- Markdown rendering inside results / messages -----
+       Aggressive zero-margin baseline. The framework's renderSafeMarkdown
+       runs marked with breaks:true, which makes default block margins
+       compound into huge gaps. Reset everything to 0, then add small
+       explicit top margins between adjacent siblings only. */
+    .a0swarm-md {
+        font-family: inherit;
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: var(--color-text);
+        word-break: break-word;
+    }
+    .a0swarm-md p,
+    .a0swarm-md ul,
+    .a0swarm-md ol,
+    .a0swarm-md pre,
+    .a0swarm-md blockquote,
+    .a0swarm-md table,
+    .a0swarm-md hr,
+    .a0swarm-md h1,
+    .a0swarm-md h2,
+    .a0swarm-md h3,
+    .a0swarm-md h4,
+    .a0swarm-md h5,
+    .a0swarm-md h6 { margin: 0; }
+
+    /* Vertical rhythm: explicit top margin only between adjacent siblings. */
+    .a0swarm-md > * + *,
+    .a0swarm-md li > * + * { margin-top: 0.35em; }
+
+    /* Slightly more air above headings and code blocks that follow text. */
+    .a0swarm-md > * + h1,
+    .a0swarm-md > * + h2,
+    .a0swarm-md > * + h3,
+    .a0swarm-md > * + h4,
+    .a0swarm-md > * + h5,
+    .a0swarm-md > * + h6,
+    .a0swarm-md > * + pre,
+    .a0swarm-md > * + blockquote,
+    .a0swarm-md > * + table { margin-top: 0.55em; }
+
+    .a0swarm-md h1,
+    .a0swarm-md h2,
+    .a0swarm-md h3,
+    .a0swarm-md h4,
+    .a0swarm-md h5,
+    .a0swarm-md h6 {
+        font-weight: 700;
+        line-height: 1.25;
+        color: var(--color-text);
+    }
+    .a0swarm-md h1 { font-size: 1.05rem; }
+    .a0swarm-md h2 { font-size: 0.95rem; }
+    .a0swarm-md h3 { font-size: 0.88rem; }
+    .a0swarm-md h4,
+    .a0swarm-md h5,
+    .a0swarm-md h6 { font-size: 0.82rem; }
+
+    .a0swarm-md ul,
+    .a0swarm-md ol { padding-left: 1.3rem; }
+    /* List items: kill every default margin in this subtree with !important,
+       then re-add a tight gap between sibling <li>s only. Anything marked or
+       DOMPurify outputs (p, br, nested ul/ol, code, etc.) gets zeroed.
+       cb: spacing-v3 */
+    .a0swarm-md li,
+    .a0swarm-md li > *,
+    .a0swarm-md li > * > *  { margin: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+    .a0swarm-md li          { padding: 0 !important; }
+    .a0swarm-md li + li     { margin-top: 0.15em !important; }
+    .a0swarm-md li > p      { display: inline !important; }
+    .a0swarm-md li > p + p,
+    .a0swarm-md li > ul,
+    .a0swarm-md li > ol,
+    .a0swarm-md li > pre    { display: block !important; margin-top: 0.2em !important; }
+    .a0swarm-md a {
+        color: var(--color-highlight);
+        text-decoration: underline;
+        text-underline-offset: 0.15em;
+    }
+    .a0swarm-md a:hover { filter: brightness(1.15); }
+    .a0swarm-md strong { font-weight: 700; color: var(--color-text); }
+    .a0swarm-md em     { font-style: italic; }
+    .a0swarm-md hr {
+        border: 0;
+        border-top: 1px solid var(--a0swarm-chrome-border);
+        margin: 0.75em 0;
+    }
+    .a0swarm-md blockquote {
+        margin: 0.5em 0;
+        padding: 0.25em 0.65em;
+        border-left: 3px solid color-mix(in srgb, var(--color-highlight) 50%, transparent);
+        background: color-mix(in srgb, var(--color-highlight) 6%, transparent);
+        color: var(--color-text-muted);
+        border-radius: 0 0.3rem 0.3rem 0;
+    }
+    .a0swarm-md code {
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 0.86em;
+        padding: 0.05em 0.32em;
+        border-radius: 0.25rem;
+        background: color-mix(in srgb, var(--color-background) 85%, transparent);
+        border: 1px solid var(--a0swarm-chrome-border);
+        color: var(--color-text);
+    }
+    .a0swarm-md pre {
+        margin: 0.5em 0;
+        padding: 0.6rem 0.75rem;
+        border-radius: 0.4rem;
+        background: color-mix(in srgb, var(--color-background) 75%, #000 8%);
+        border: 1px solid var(--a0swarm-chrome-border);
+        overflow-x: auto;
+        white-space: pre;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 0.72rem;
+        line-height: 1.5;
+    }
+    .a0swarm-md pre code {
+        padding: 0;
+        background: transparent;
+        border: 0;
+        font-size: inherit;
+    }
+    .a0swarm-md table {
+        border-collapse: collapse;
+        margin: 0.5em 0;
+        font-size: 0.75rem;
+    }
+    .a0swarm-md th,
+    .a0swarm-md td {
+        border: 1px solid var(--a0swarm-chrome-border);
+        padding: 0.25rem 0.5rem;
+        text-align: left;
+    }
+    .a0swarm-md th { background: color-mix(in srgb, var(--color-background) 70%, transparent); }
+
+    /* Result markdown — keep the framed/scrollable look from the
+       container, but let the markdown set its own typography. */
+    .a0swarm-card__result.a0swarm-md {
+        font-family: inherit;
+        font-size: 0.78rem;
+        color: var(--color-text);
+    }
+</style>
+
+<div
+    x-data
+    x-init="$store.swarmStore.init()"
+    class="a0swarm-panel"
+    x-cloak
+>
+    <header class="a0swarm-header">
+        <div class="a0swarm-header__title">
+            <span class="material-symbols-outlined" aria-hidden="true">group_work</span>
+            <span>Swarm</span>
+        </div>
+        <div class="a0swarm-header__meta">
+            <span
+                class="a0swarm-header__count"
+                :class="{ 'is-zero': $store.swarmStore.activeAgents.length === 0 }"
+                x-text="$store.swarmStore.activeAgents.length"
+                :title="$store.swarmStore.activeAgents.length + ' active subagent(s)'"
+            >0</span>
+            <span>active</span>
+        </div>
+    </header>
+
+    <div class="a0swarm-body">
+
+        <!-- ============ Empty state ============ -->
+        <div class="a0swarm-empty" x-show="!$store.swarmStore.hasAgents">
+            <span class="a0swarm-empty__icon-wrap" aria-hidden="true">
+                <span class="material-symbols-outlined">group_work</span>
+            </span>
+            <div class="a0swarm-empty__title">No subagents running</div>
+            <div class="a0swarm-empty__desc">
+                The orchestrator can spawn parallel subagents that each work an
+                independent task in their own isolated context. Live status,
+                messages and controls for each subagent appear here.
+            </div>
+            <span class="a0swarm-empty__hint">
+                <span class="material-symbols-outlined" aria-hidden="true">terminal</span>
+                <span>delegate_parallel</span>
+            </span>
+        </div>
+
+        <!-- ============ Active agents ============ -->
+        <template x-if="$store.swarmStore.activeAgents.length > 0">
+            <section class="a0swarm-section">
+                <div class="a0swarm-section__label">
+                    <span class="a0swarm-section__label-text">
+                        <span>Active</span>
+                        <span
+                            class="a0swarm-header__count"
+                            x-text="$store.swarmStore.activeAgents.length"
+                        ></span>
+                    </span>
+                    <span class="a0swarm-section__label-rule" aria-hidden="true"></span>
+                </div>
+
+                <template x-for="agent in $store.swarmStore.activeAgents" :key="agent.agent_name">
+                    <article class="a0swarm-card"
+                             :class="[
+                                $store.swarmStore.statusClass(agent.status),
+                                $store.swarmStore.isExpanded(agent.agent_name) ? 'is-expanded' : ''
+                             ]">
+                        <header class="a0swarm-card__header"
+                                @click="$store.swarmStore.toggleExpand(agent.agent_name)">
+                            <span class="a0swarm-card__avatar"
+                                  :class="'slot-' + $store.swarmStore.slotIndex(agent.agent_name)"
+                                  :title="agent.agent_name + ' (slot ' + $store.swarmStore.slotIndex(agent.agent_name) + ')'">
+                                <span class="material-symbols-outlined a0swarm-card__avatar-icon"
+                                      x-text="$store.swarmStore.slotIcon(agent.agent_name)"
+                                      aria-hidden="true"></span>
+                                <span class="a0swarm-card__avatar-num"
+                                      x-text="$store.swarmStore.slotIndex(agent.agent_name)"></span>
+                            </span>
+                            <span class="a0swarm-card__status" x-text="agent.status"></span>
+                            <span class="a0swarm-card__label" x-text="agent.label" :title="agent.label"></span>
+                            <span class="a0swarm-card__name" x-text="agent.agent_name" :title="agent.agent_name"></span>
+                            <span class="a0swarm-card__remote"
+                                  x-show="agent.is_remote"
+                                  :title="'Remote: ' + agent.remote_base_url">
+                                <span class="material-symbols-outlined" aria-hidden="true">cloud</span>
+                                <span x-text="agent.remote_label"></span>
+                            </span>
+                            <span class="a0swarm-card__unread"
+                                  x-show="$store.swarmStore.unreadCount(agent) > 0"
+                                  x-text="$store.swarmStore.unreadCount(agent)"
+                                  :title="$store.swarmStore.unreadCount(agent) + ' unread'"></span>
+                            <span class="material-symbols-outlined a0swarm-card__chevron"
+                                  aria-hidden="true">expand_more</span>
+                        </header>
+
+                        <!-- Always-visible compact info -->
+                        <div class="a0swarm-card__activity"
+                             x-show="agent.current_activity"
+                             x-text="agent.current_activity"></div>
+
+                        <div class="a0swarm-card__metrics">
+                            <div class="a0swarm-metric">
+                                <span class="a0swarm-metric__label">Elapsed</span>
+                                <span class="a0swarm-metric__value" x-text="$store.swarmStore.elapsed(agent) || '-'"></span>
+                            </div>
+                            <div class="a0swarm-metric">
+                                <span class="a0swarm-metric__label">Tools</span>
+                                <span class="a0swarm-metric__value" x-text="$store.swarmStore.formatNumber(agent.tool_call_count)"></span>
+                            </div>
+                            <div class="a0swarm-metric">
+                                <span class="a0swarm-metric__label">Tokens in</span>
+                                <span class="a0swarm-metric__value" x-text="$store.swarmStore.formatNumber(agent.input_tokens)"></span>
+                            </div>
+                            <div class="a0swarm-metric">
+                                <span class="a0swarm-metric__label">Tokens out</span>
+                                <span class="a0swarm-metric__value" x-text="$store.swarmStore.formatNumber(agent.output_tokens)"></span>
+                            </div>
+                        </div>
+
+                        <div class="a0swarm-card__progress"
+                             x-show="agent.status === 'working'"
+                             aria-hidden="true"></div>
+
+                        <div class="a0swarm-card__blocker" x-show="agent.blocker">
+                            <span class="material-symbols-outlined" aria-hidden="true">block</span>
+                            <div>
+                                <span class="a0swarm-card__blocker-label">Blocked:</span>
+                                <span x-text="agent.blocker"></span>
+                            </div>
+                        </div>
+
+                        <!-- Expanded body -->
+                        <div class="a0swarm-card__collapsible">
+                            <div class="a0swarm-card__task a0swarm-md"
+                                 x-html="$store.swarmStore.renderMd(agent.task)"></div>
+
+                            <div class="a0swarm-live" x-show="agent.live_reasoning || agent.live_output">
+                                <div x-show="agent.live_reasoning">
+                                    <div class="a0swarm-live__title">
+                                        <span class="material-symbols-outlined" aria-hidden="true">psychology</span>
+                                        <span>Reasoning stream</span>
+                                    </div>
+                                    <div class="a0swarm-live__body" x-text="agent.live_reasoning"></div>
+                                </div>
+                                <div x-show="agent.live_output">
+                                    <div class="a0swarm-live__title">
+                                        <span class="material-symbols-outlined" aria-hidden="true">notes</span>
+                                        <span>Response stream</span>
+                                    </div>
+                                    <div class="a0swarm-live__body" x-text="agent.live_output"></div>
+                                </div>
+                            </div>
+
+                            <div class="a0swarm-card__messages"
+                                 x-show="agent.messages && agent.messages.length > 0"
+                                 @click="$store.swarmStore.markRead(agent.agent_name)">
+                                <template x-for="msg in agent.messages" :key="msg.message_id || msg.timestamp">
+                                    <div class="a0swarm-msg"
+                                         :class="msg.sender === 'orchestrator' ? 'a0swarm-msg--out' : 'a0swarm-msg--in'">
+                                        <span class="a0swarm-msg__topline">
+                                            <span class="a0swarm-msg__sender" x-text="msg.sender"></span>
+                                            <span class="a0swarm-msg__delivery"
+                                                  :class="$store.swarmStore.deliveryClass(msg.delivery_state)"
+                                                  x-text="msg.delivery_state || 'queued'"></span>
+                                        </span>
+                                        <span class="a0swarm-msg__content a0swarm-md"
+                                              x-html="$store.swarmStore.renderMd(msg.content)"></span>
+                                        <template x-if="msg.delivery_state === 'failed' || msg.failure_reason">
+                                            <span class="a0swarm-msg__failure">
+                                                <span x-text="msg.failure_reason || 'Delivery failed'"></span>
+                                                <button type="button"
+                                                        class="a0swarm-msg__retry"
+                                                        @click.stop="$store.swarmStore.retryMessage(msg.message_id)"
+                                                        :disabled="$store.swarmStore.retryingMessageId === msg.message_id">
+                                                    Retry
+                                                </button>
+                                            </span>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="a0swarm-card__compose"
+                                 x-show="$store.swarmStore.composingFor === agent.agent_name">
+                                <textarea
+                                    class="a0swarm-compose__input"
+                                    x-model="$store.swarmStore.composeText"
+                                    placeholder="Message this agent..."
+                                    rows="2"
+                                    @keydown.enter.ctrl="$store.swarmStore.sendMessage(agent.agent_name)"
+                                ></textarea>
+                                <div class="a0swarm-compose__actions">
+                                    <button type="button" class="a0swarm-btn a0swarm-btn--primary"
+                                            @click.stop="$store.swarmStore.sendMessage(agent.agent_name)">
+                                        <span class="material-symbols-outlined" aria-hidden="true">send</span>
+                                        <span>Send</span>
+                                    </button>
+                                    <button type="button" class="a0swarm-btn a0swarm-btn--warn"
+                                            x-show="agent.status === 'blocked'"
+                                            @click.stop="$store.swarmStore.sendMessage(agent.agent_name, true)">
+                                        <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                                        <span>Send &amp; Unblock</span>
+                                    </button>
+                                    <button type="button" class="a0swarm-btn"
+                                            @click.stop="$store.swarmStore.closeCompose()">Cancel</button>
+                                </div>
+                            </div>
+
+                            <div class="a0swarm-card__actions">
+                                <button type="button" class="a0swarm-btn"
+                                        x-show="$store.swarmStore.composingFor !== agent.agent_name"
+                                        @click.stop="$store.swarmStore.openCompose(agent.agent_name)">
+                                    <span class="material-symbols-outlined" aria-hidden="true">forum</span>
+                                    <span>Message</span>
+                                </button>
+                                <button type="button" class="a0swarm-btn a0swarm-btn--danger"
+                                        @click.stop="$store.swarmStore.cancelAgent(agent.agent_name)">
+                                    <span class="material-symbols-outlined" aria-hidden="true">cancel</span>
+                                    <span>Cancel</span>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                </template>
+            </section>
+        </template>
+
+        <!-- ============ Completed agents ============ -->
+        <template x-if="$store.swarmStore.completedAgents.length > 0">
+            <section class="a0swarm-section a0swarm-section--completed">
+                <div class="a0swarm-section__label">
+                    <span class="a0swarm-section__label-text">
+                        <span>Completed</span>
+                        <span
+                            class="a0swarm-header__count is-zero"
+                            x-text="$store.swarmStore.completedAgents.length"
+                        ></span>
+                    </span>
+                    <button type="button" class="a0swarm-btn a0swarm-btn--small"
+                            @click="$store.swarmStore.clearCompleted()">
+                        <span class="material-symbols-outlined" aria-hidden="true">delete_sweep</span>
+                        <span>Clear</span>
+                    </button>
+                </div>
+
+                <template x-for="agent in $store.swarmStore.completedAgents" :key="agent.agent_name">
+                    <article class="a0swarm-card"
+                             :class="[
+                                $store.swarmStore.statusClass(agent.status),
+                                $store.swarmStore.isExpanded(agent.agent_name) ? 'is-expanded' : ''
+                             ]">
+                        <header class="a0swarm-card__header"
+                                @click="$store.swarmStore.toggleExpand(agent.agent_name)">
+                            <span class="a0swarm-card__avatar"
+                                  :class="'slot-' + $store.swarmStore.slotIndex(agent.agent_name)"
+                                  :title="agent.agent_name + ' (slot ' + $store.swarmStore.slotIndex(agent.agent_name) + ')'">
+                                <span class="material-symbols-outlined a0swarm-card__avatar-icon"
+                                      x-text="$store.swarmStore.slotIcon(agent.agent_name)"
+                                      aria-hidden="true"></span>
+                                <span class="a0swarm-card__avatar-num"
+                                      x-text="$store.swarmStore.slotIndex(agent.agent_name)"></span>
+                            </span>
+                            <span class="a0swarm-card__status" x-text="agent.status"></span>
+                            <span class="a0swarm-card__label" x-text="agent.label" :title="agent.label"></span>
+                            <span class="a0swarm-card__name" x-text="agent.agent_name" :title="agent.agent_name"></span>
+                            <span class="a0swarm-card__remote"
+                                  x-show="agent.is_remote"
+                                  :title="'Remote: ' + agent.remote_base_url">
+                                <span class="material-symbols-outlined" aria-hidden="true">cloud</span>
+                                <span x-text="agent.remote_label"></span>
+                            </span>
+                            <span class="material-symbols-outlined a0swarm-card__chevron"
+                                  aria-hidden="true">expand_more</span>
+                        </header>
+
+                        <div class="a0swarm-card__collapsible">
+                            <div class="a0swarm-card__metrics">
+                                <div class="a0swarm-metric">
+                                    <span class="a0swarm-metric__label">Elapsed</span>
+                                    <span class="a0swarm-metric__value" x-text="$store.swarmStore.elapsed(agent) || '-'"></span>
+                                </div>
+                                <div class="a0swarm-metric">
+                                    <span class="a0swarm-metric__label">Tools</span>
+                                    <span class="a0swarm-metric__value" x-text="$store.swarmStore.formatNumber(agent.tool_call_count)"></span>
+                                </div>
+                                <div class="a0swarm-metric">
+                                    <span class="a0swarm-metric__label">Tokens in</span>
+                                    <span class="a0swarm-metric__value" x-text="$store.swarmStore.formatNumber(agent.input_tokens)"></span>
+                                </div>
+                                <div class="a0swarm-metric">
+                                    <span class="a0swarm-metric__label">Tokens out</span>
+                                    <span class="a0swarm-metric__value" x-text="$store.swarmStore.formatNumber(agent.output_tokens)"></span>
+                                </div>
+                            </div>
+                            <div class="a0swarm-card__task a0swarm-md"
+                                 x-html="$store.swarmStore.renderMd(agent.task)"></div>
+                            <div class="a0swarm-card__result a0swarm-md"
+                                 x-show="agent.result"
+                                 x-html="$store.swarmStore.renderMd(agent.result)"></div>
+                            <div class="a0swarm-card__messages"
+                                 x-show="agent.messages && agent.messages.length > 0">
+                                <template x-for="msg in agent.messages" :key="msg.message_id || msg.timestamp">
+                                    <div class="a0swarm-msg"
+                                         :class="msg.sender === 'orchestrator' ? 'a0swarm-msg--out' : 'a0swarm-msg--in'">
+                                        <span class="a0swarm-msg__topline">
+                                            <span class="a0swarm-msg__sender" x-text="msg.sender"></span>
+                                            <span class="a0swarm-msg__delivery"
+                                                  :class="$store.swarmStore.deliveryClass(msg.delivery_state)"
+                                                  x-text="msg.delivery_state || 'queued'"></span>
+                                        </span>
+                                        <span class="a0swarm-msg__content a0swarm-md"
+                                              x-html="$store.swarmStore.renderMd(msg.content)"></span>
+                                        <template x-if="msg.delivery_state === 'failed' || msg.failure_reason">
+                                            <span class="a0swarm-msg__failure">
+                                                <span x-text="msg.failure_reason || 'Delivery failed'"></span>
+                                                <button type="button"
+                                                        class="a0swarm-msg__retry"
+                                                        @click.stop="$store.swarmStore.retryMessage(msg.message_id)"
+                                                        :disabled="$store.swarmStore.retryingMessageId === msg.message_id">
+                                                    Retry
+                                                </button>
+                                            </span>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </article>
+                </template>
+            </section>
+        </template>
+    </div>
+</div>
