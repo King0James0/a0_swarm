@@ -13,28 +13,74 @@ for the communication, observability, and remote-container enhancement spec.
 
 ## Subagent workspace (where local subs work)
 
-By default a delegated sub runs in the global workdir, so it can't see the repo the orchestrator
-is working in, and all subs share one folder. The `subagent_workspace` setting (Plugin Settings →
-Agent, or `default_config.yaml`) controls this:
+Local subagents spawned by `delegate_parallel` need somewhere to work. The `subagent_workspace`
+setting controls that. Quick reference:
 
 | Mode | Each sub gets | Use for |
 |---|---|---|
-| `none` (default) | the global workdir (unchanged) | back-compat / no project context |
-| `inherit` | the parent's active project activated (shared folder) | parallel **read / analysis** |
-| `isolated` | its **own git worktree + branch** of the parent's repo, registered as a project | parallel **editing** without collision |
+| `none` (default) | the global workdir (today's behavior) | back-compat / no project context |
+| `inherit` | the orchestrator's active project (shared folder) | parallel **read / analysis** |
+| `isolated` | its **own git worktree + branch** of the orchestrator's repo | parallel **editing** without collision |
 
-`inherit` only makes subs *see* the repo — they still share one working tree, so it is **not** safe
-for parallel edits. Use `isolated` when subs will modify files: each sub gets a separate worktree on
-its own `swarm/<key>` branch off the parent's current commit (subs start clean from `HEAD`;
-uncommitted changes in the parent are not carried), so their edits and git operations can't clobber
-each other. Worktrees are reclaimed when each sub finishes (and a crash-safe sweep reclaims any left
-by a crashed run).
+### `none` (default) — every sub runs in the global workdir
 
-`isolated` requires the parent to have an **active project that is a git repo**; otherwise it falls
-back to `inherit`. If the [`a0_worktree`](https://github.com/King0James0/a0-worktree) plugin is
-installed it owns worktree lifecycle and swarm delegates to it; otherwise swarm manages an inline
-worktree itself. Either way swarm only ever touches worktrees it created (marker-scoped), so it
-coexists safely with other worktree plugins or manual `git worktree` use.
+| Scenario | What happens to subs |
+|---|---|
+| `none` + no project | All subs run in the global workdir (`/a0/usr/workdir`), sharing one folder |
+| `none` + orchestrator has a project | Subs **still** run in the global workdir — they ignore the project |
+
+So with `none`:
+
+- Every local sub runs in the one global workdir, regardless of whether the orchestrator is in a project.
+- **No project inheritance** — subs never see the orchestrator's repo.
+- **No isolation** — all subs share that single folder, so two subs writing the same path would collide.
+
+This is the default and matches the plugin's original behavior.
+
+### `inherit` — subs share the orchestrator's project
+
+| Scenario | What happens to subs |
+|---|---|
+| `inherit` + no project | Falls back to the global workdir (nothing to inherit) |
+| `inherit` + orchestrator has a project | Each sub gets that **same** project activated → all run in the project folder and see the repo |
+
+So with `inherit`:
+
+- Subs now **see the orchestrator's repo** (the default never did).
+- It's still **one shared folder** — safe for parallel **reads/analysis**, but **not** for parallel edits
+  (same collision risk as `none`, just relocated from the global workdir into the project folder).
+
+### `isolated` — each sub gets its own worktree + branch
+
+| Scenario | What happens to subs |
+|---|---|
+| `isolated` + no project | Falls back to the global workdir |
+| `isolated` + project that's not a git repo | Falls back to `inherit` (shared project folder) |
+| `isolated` + project that is a git repo | Each sub gets its **own** git worktree + its **own** `swarm/<key>` branch → separate folders |
+
+So with `isolated`:
+
+- Each sub gets its **own working copy** (a worktree off the shared `.git`) on its **own branch** from the
+  orchestrator's `HEAD` (subs start clean from `HEAD`; uncommitted changes in the parent are not carried).
+- **Edits can't collide** — subs write in separate folders; the orchestrator's repo is untouched during the run.
+- Each sub's work is **committed to its branch and preserved** for merging (the branch name is included in
+  the sub's result).
+- Worktrees are **reclaimed when subs finish** (plus a crash-safe sweep for runs that died early), and the
+  plugin only ever touches worktrees **it** created (marker-scoped), so it coexists with other worktree
+  tools or manual `git worktree` use.
+
+If the `a0_worktree` plugin is installed it owns worktree lifecycle and `isolated` delegates to it;
+otherwise swarm manages an inline worktree itself.
+
+### Changing the setting
+
+`subagent_workspace` is a single **global** setting — it applies to every `delegate_parallel` call.
+
+- **In the UI:** Settings → **Agent** section → **A0 Swarm** → the **Subagent workspace** dropdown
+  (`none` / `inherit` / `isolated`). The change takes effect on the next `delegate_parallel` call — no restart.
+- **On disk:** the shipped default lives in `default_config.yaml` (`subagent_workspace: none`); your saved
+  choice is stored in `config.json`. The tool reads the merged value (your `config.json` over the default)
+  at call time.
 
 ## Delivery states
 
