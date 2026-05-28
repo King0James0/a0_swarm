@@ -1,6 +1,14 @@
 max_parallel: 0
 default_profile: ""
 result_kb_cap: 64
+
+# Where local subagents work.
+#   none     - global workdir (default; subs don't see the orchestrator's repo, share one folder)
+#   inherit  - the parent's active project is activated on each sub (shared folder; parallel READ)
+#   isolated - each sub gets its OWN git worktree + branch of the parent's repo (parallel EDIT;
+#              uses the a0_worktree plugin if installed, else an inline worktree)
+subagent_workspace: none
+
 remotes: []
 
 remote_diagnostics:

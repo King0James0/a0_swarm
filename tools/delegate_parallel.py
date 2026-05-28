@@ -8,13 +8,13 @@ try:
 except ImportError:
     class AgentContextType:
         BACKGROUND = "background"
-from helpers import plugins
+from helpers import plugins, projects
 from helpers.tool import Tool, Response
 from initialize import initialize_agent
 from usr.plugins.a0_swarm.helpers.registry import (
     SwarmRegistry, SwarmAgent, SwarmAgentStatus, MAX_RESULT_BYTES, utc_iso_now,
 )
-from usr.plugins.a0_swarm.helpers import a2a_runner
+from usr.plugins.a0_swarm.helpers import a2a_runner, workspace
 from usr.plugins.a0_swarm.helpers.remotes import RemoteEndpoint, resolve_endpoint
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,17 @@ class DelegateParallel(Tool):
         default_profile = (cfg.get("default_profile") or "").strip()
         result_kb_cap = int(cfg.get("result_kb_cap") or 0)
         self._result_byte_cap = (result_kb_cap * 1024) if result_kb_cap > 0 else MAX_RESULT_BYTES
+
+        # Where do local subs work? none (global workdir, default) | inherit (parent's project) |
+        # isolated (own git worktree of the parent's repo). See helpers/workspace.py.
+        workspace_mode = (cfg.get("subagent_workspace") or "none").strip().lower()
+        parent_project = projects.get_context_project_name(self.agent.context)
+        if workspace_mode == "isolated":
+            # reclaim isolated worktrees we own whose sub-context died before cleanup (crash-safe)
+            try:
+                workspace.sweep_orphans([c.id for c in AgentContext.all()])
+            except Exception:
+                pass
 
         if max_parallel > 0 and len(tasks) > max_parallel:
             return Response(
@@ -129,6 +140,9 @@ class DelegateParallel(Tool):
             sub_agent = sub_ctx.agent0
             sub_agent.agent_name = agent_name
 
+            # give the sub a workspace BEFORE it runs (its cwd is bound on first code-exec).
+            ws = workspace.setup(workspace_mode, parent_project, sub_ctx, run.run_id, i)
+
             entry = SwarmAgent(
                 agent_name=agent_name, label=label, task=task_text,
                 context_id=sub_ctx.id, parent_context_id=parent_ctx_id,
@@ -139,23 +153,27 @@ class DelegateParallel(Tool):
             )
             registry.register(entry)
             entries.append(entry)
-            coros.append(self._run_subagent(sub_ctx, sub_agent, task_text, entry))
+            coros.append(self._run_subagent(sub_ctx, sub_agent, task_text, entry, ws))
 
         results = await asyncio.gather(*coros, return_exceptions=True)
         return Response(message=self._summarize(entries, results), break_loop=False)
 
-    async def _run_subagent(self, sub_ctx, sub_agent, task_text, entry):
+    async def _run_subagent(self, sub_ctx, sub_agent, task_text, entry, ws=None):
         registry = SwarmRegistry.get()
         registry.update_status(entry.agent_name, SwarmAgentStatus.WORKING)
         try:
             sub_agent.hist_add_user_message(UserMessage(message=task_text))
             result = await sub_agent.monologue()
-            stored = self._cap_result(result or "")
+            out = result or ""
+            # In isolated mode, tell the orchestrator which branch holds this sub's work to merge.
+            if ws is not None and getattr(ws, "mode", None) == "isolated" and getattr(ws, "branch", None):
+                out = f"[workspace: branch `{ws.branch}` in project `{ws.project_name}`]\n" + out
+            stored = self._cap_result(out)
             registry.update_status(
                 entry.agent_name, SwarmAgentStatus.DONE,
                 result=stored, current_activity="",
             )
-            return result or ""
+            return out
         except Exception as e:
             registry.update_status(
                 entry.agent_name, SwarmAgentStatus.FAILED,
@@ -163,6 +181,11 @@ class DelegateParallel(Tool):
             )
             raise
         finally:
+            try:
+                if ws is not None:
+                    ws.teardown()
+            except Exception:
+                pass
             try:
                 AgentContext.remove(sub_ctx.id)
             except Exception:

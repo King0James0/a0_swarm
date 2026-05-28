@@ -156,6 +156,28 @@
                     </div>
                 </div>
 
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Subagent workspace</div>
+                        <div class="field-description">
+                            Where local subagents work.
+                            <b>none</b>: the global workdir (default).
+                            <b>inherit</b>: the parent's active project (shared folder; parallel
+                            read/analysis only — not safe for parallel edits).
+                            <b>isolated</b>: each sub gets its own git worktree + branch of the
+                            parent's repo (parallel editing; uses the a0_worktree plugin if installed).
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <select x-model="config.subagent_workspace"
+                            x-init="if (config.subagent_workspace === undefined || config.subagent_workspace === null) config.subagent_workspace = 'none'">
+                            <option value="none">none (global workdir)</option>
+                            <option value="inherit">inherit (shared parent project)</option>
+                            <option value="isolated">isolated (own worktree per sub)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="section-title" style="margin-top:1.25rem;">Remote Agent Zero instances</div>
                 <div class="section-description">
                     Other Agent Zero containers reachable over the network. Each entry can be
