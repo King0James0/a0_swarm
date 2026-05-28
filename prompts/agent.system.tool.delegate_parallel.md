@@ -12,6 +12,8 @@ Args:
 
 Returns: a structured markdown summary of all agent results once every agent completes.
 
+When `subagent_workspace` is `inherit` or `isolated`, each sub **already starts in the correct directory** (its activated project / worktree). Do NOT put an absolute `cd /a0/usr/projects/...` into a sub's `task` — phrase the work to run in the sub's **current** directory. A hardcoded `cd` makes the sub leave its workspace and write into the shared checkout, defeating isolation.
+
 When `subagent_workspace=isolated`, each sub edits its own git worktree of the parent's repo and its result begins with a `[workspace: committed to branch ... in repo ...]` line. That branch lives in the **parent repo's** `.git` and holds the sub's committed work — the temporary worktree checkout is removed afterward but the **branch persists and is mergeable**. Report these branches to the user as work to merge; do NOT describe them as ephemeral or as "not landing in the repo."
 
 Example:
