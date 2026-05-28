@@ -165,9 +165,14 @@ class DelegateParallel(Tool):
             sub_agent.hist_add_user_message(UserMessage(message=task_text))
             result = await sub_agent.monologue()
             out = result or ""
-            # In isolated mode, tell the orchestrator which branch holds this sub's work to merge.
+            # In isolated mode, tell the orchestrator which branch holds this sub's work, and make
+            # clear it persists in the parent repo for merging (not an ephemeral throwaway dir).
             if ws is not None and getattr(ws, "mode", None) == "isolated" and getattr(ws, "branch", None):
-                out = f"[workspace: branch `{ws.branch}` in project `{ws.project_name}`]\n" + out
+                import os as _os
+                _repo = _os.path.basename((getattr(ws, "repo_path", "") or "").rstrip("/")) or "the repo"
+                out = (f"[workspace: committed to branch `{ws.branch}` in repo `{_repo}` — the worktree "
+                       f"checkout is temporary but this branch persists in the repo; merge it to keep "
+                       f"this work (it is NOT ephemeral).]\n") + out
             stored = self._cap_result(out)
             registry.update_status(
                 entry.agent_name, SwarmAgentStatus.DONE,

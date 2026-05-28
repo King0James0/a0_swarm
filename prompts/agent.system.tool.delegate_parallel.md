@@ -12,6 +12,8 @@ Args:
 
 Returns: a structured markdown summary of all agent results once every agent completes.
 
+When `subagent_workspace=isolated`, each sub edits its own git worktree of the parent's repo and its result begins with a `[workspace: committed to branch ... in repo ...]` line. That branch lives in the **parent repo's** `.git` and holds the sub's committed work — the temporary worktree checkout is removed afterward but the **branch persists and is mergeable**. Report these branches to the user as work to merge; do NOT describe them as ephemeral or as "not landing in the repo."
+
 Example:
 ~~~json
 {
