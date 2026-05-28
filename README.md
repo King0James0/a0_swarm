@@ -82,6 +82,21 @@ otherwise swarm manages an inline worktree itself.
   choice is stored in `config.json`. The tool reads the merged value (your `config.json` over the default)
   at call time.
 
+### Using with a0_worktree
+
+`isolated` works on its own (swarm manages an inline worktree). But if the
+[`a0_worktree`](https://github.com/King0James0/a0-worktree-plugin) plugin is also installed, swarm
+**delegates** each sub's worktree to it — `a0_worktree` is the authoritative owner of worktree
+lifecycle, so the two compose cleanly instead of both managing worktrees. Detection is an exact probe
+of `a0_worktree`'s versioned contract (`helpers/contract.py`); if it's absent, swarm falls back to its
+inline worktree. Either way, swarm only touches worktrees it (or `a0_worktree`) created.
+
+Cleanup in the swarm case is non-interactive (a fan-out has no human watching each sub): each sub's
+worktree **checkout** is removed when that sub finishes, but its **branch is always kept** so the work
+survives. Swarm surfaces each sub's branch in its result; decide what to do with the batch (merge /
+keep / delete) once at the end. Installing `a0_worktree` only upgrades the `isolated` engine — it does
+not change `none`/`inherit`, and `isolated` is never applied unless you select it.
+
 ## Delivery states
 
 - `queued` — accepted into the ledger and visible in the panel.
